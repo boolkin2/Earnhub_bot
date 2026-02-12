@@ -18,12 +18,25 @@
             --secondary: #00B894;
             --accent: #FDCB6E;
             --danger: #FF7675;
+            --success: #00B894;
+            --info: #0984E3;
+            --warning: #FDCB6E;
             --bg-dark: #0F0F1E;
             --bg-card: #1A1A2E;
             --bg-hover: #252542;
             --text-primary: #FFFFFF;
             --text-secondary: #A0A0B8;
             --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Light theme */
+        body.light-theme {
+            --bg-dark: #F5F7FA;
+            --bg-card: #FFFFFF;
+            --bg-hover: #E8ECF1;
+            --text-primary: #1A1A2E;
+            --text-secondary: #6B7280;
+            --border: rgba(0, 0, 0, 0.1);
         }
 
         body {
@@ -33,6 +46,7 @@
             min-height: 100vh;
             padding: 0;
             overflow-x: hidden;
+            transition: background 0.3s ease, color 0.3s ease;
         }
 
         .app {
@@ -692,6 +706,106 @@
             font-weight: 700;
             color: var(--secondary);
         }
+        
+        /* Notifications */
+        .notifications-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: calc(100% - 40px);
+            max-width: 400px;
+            pointer-events: none;
+        }
+        
+        .notification {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            animation: slideDown 0.3s ease;
+            pointer-events: all;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .notification.success {
+            border-left: 4px solid var(--success);
+        }
+        
+        .notification.error {
+            border-left: 4px solid var(--danger);
+        }
+        
+        .notification.info {
+            border-left: 4px solid var(--info);
+        }
+        
+        .notification.warning {
+            border-left: 4px solid var(--warning);
+        }
+        
+        .notification-content {
+            flex: 1;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .notification-close {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--bg-hover);
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .notification-close:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        /* Theme toggle button */
+        .theme-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.4);
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+        
+        .theme-toggle:hover {
+            transform: scale(1.1) rotate(15deg);
+        }
     </style>
 </head>
 <body>
@@ -702,16 +816,65 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         // ВАЖНО: Замените на ваши данные!
         const TELEGRAM_BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE';
         const TELEGRAM_CHAT_ID = 'YOUR_CHAT_ID_HERE';
+        
+        // Utility functions for localStorage
+        const storage = {
+            get: (key, defaultValue = null) => {
+                try {
+                    const item = localStorage.getItem(key);
+                    return item ? JSON.parse(item) : defaultValue;
+                } catch {
+                    return defaultValue;
+                }
+            },
+            set: (key, value) => {
+                try {
+                    localStorage.setItem(key, JSON.stringify(value));
+                } catch (error) {
+                    console.error('Storage error:', error);
+                }
+            }
+        };
 
         function App() {
             const [currentView, setCurrentView] = useState('tasks');
             const [selectedTask, setSelectedTask] = useState(null);
-            const [userBalance] = useState(0);
+            const [userBalance, setUserBalance] = useState(() => storage.get('userBalance', 0));
+            const [notifications, setNotifications] = useState([]);
+            
+            // Save balance to localStorage
+            useEffect(() => {
+                storage.set('userBalance', userBalance);
+            }, [userBalance]);
+            
+            // First visit bonus
+            useEffect(() => {
+                const visited = storage.get('visited', false);
+                if (!visited) {
+                    storage.set('visited', true);
+                    setUserBalance(prev => prev + 100);
+                    showNotification('🎉 Бонус за первый визит: +100₽', 'success');
+                }
+            }, []);
+            
+            // Notification helper
+            const showNotification = (message, type = 'info') => {
+                const id = Date.now();
+                setNotifications(prev => [...prev, { id, message, type }]);
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== id));
+                }, 4000);
+                
+                // Telegram Haptic Feedback
+                if (window.Telegram?.WebApp?.HapticFeedback) {
+                    window.Telegram.WebApp.HapticFeedback.notificationOccurred(type === 'success' ? 'success' : 'warning');
+                }
+            };
             
             // Форма для Вайс и Партнёры
             const [formData, setFormData] = useState({
@@ -910,9 +1073,47 @@
                 await sendToTelegram(message);
                 window.open('https://t.me/Alecskled', '_blank');
             };
+            
+            // Theme management
+            const [isDarkTheme, setIsDarkTheme] = useState(() => storage.get('theme', 'dark') === 'dark');
+            
+            useEffect(() => {
+                if (isDarkTheme) {
+                    document.body.classList.remove('light-theme');
+                } else {
+                    document.body.classList.add('light-theme');
+                }
+                storage.set('theme', isDarkTheme ? 'dark' : 'light');
+            }, [isDarkTheme]);
+            
+            const toggleTheme = () => {
+                setIsDarkTheme(!isDarkTheme);
+                showNotification(`Тема изменена на ${!isDarkTheme ? 'тёмную' : 'светлую'}`, 'info');
+            };
 
             return (
                 <div>
+                    {/* Notifications */}
+                    {notifications.length > 0 && (
+                        <div className="notifications-container">
+                            {notifications.map(notif => (
+                                <div key={notif.id} className={`notification ${notif.type}`}>
+                                    <div className="notification-content">{notif.message}</div>
+                                    <button 
+                                        className="notification-close"
+                                        onClick={() => setNotifications(prev => prev.filter(n => n.id !== notif.id))}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    
+                    {/* Theme Toggle */}
+                    <button className="theme-toggle" onClick={toggleTheme} title="Переключить тему">
+                        {isDarkTheme ? '☀️' : '🌙'}
+                    </button>
                     <div className="header">
                         <div className="header-content">
                             <div className="logo">💰 EarnHub</div>
